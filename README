@@ -1,0 +1,2 @@
+A broken implementation of motion deblur using high frequency to determine noise direction (works ok). And Richardson Lucy deconvolution with a single line perfect distibution psf for blur compensation (Works very badly).
+
