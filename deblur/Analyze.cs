@@ -9,7 +9,7 @@ using System.Diagnostics;
 
 namespace deblur
 {
-    class Analyze :  IEquatable<Analyze> , IComparable<Analyze>
+    class Analyze :  Computable
     {
         int startX, startY;
         ImgContainer img;
@@ -29,24 +29,18 @@ namespace deblur
             this.dir = dir;
         }
 
-        
-        private ManualResetEvent done;
-
-        public Analyze(ImgContainer img, int x, int y, ManualResetEvent done, int kernelSize)
+        public Analyze(ImgContainer img, int x, int y, int kernelSize)
         {
             // Init fields
             this.img = img;
             this.startX = x;
             this.startY = y;
-            this.done = done;
             this.kernelSize = kernelSize;
         }
 
-        public void compute(Object threadContext)
+        internal override void computeThread()
         {
             findDirection();
-
-            done.Set();
         }
 
         public void findDirection()
@@ -186,30 +180,5 @@ namespace deblur
 
             // Cool, now we ret should be all filled up!
         }
-
-        // Make sure we can sort
-        // Default comparer for Part type. 
-        public int CompareTo(Analyze comparePart)
-        {
-            // A null value means that this object is greater. 
-            if (comparePart == null) {
-                return 1;
-            } else {
-                return this.dir.CompareTo(comparePart.dir);
-            }
-        }
-
-        public override int GetHashCode()
-        {
-            return startY*img.width + startX;
-        }
-
-        public bool Equals(Analyze other)
-        {
-            if (other == null) return false;
-            return (this.dir.Equals(other.dir));
-        }
-
-
     }
 }

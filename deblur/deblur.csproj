@@ -44,7 +44,11 @@
   <ItemGroup>
     <Compile Include="Analyze.cs" />
     <Compile Include="Average.cs" />
+    <Compile Include="Computable.cs" />
+    <Compile Include="DirSelector.cs" />
     <Compile Include="ImgContainer.cs" />
+    <Compile Include="PSFEstimator.cs" />
+    <Compile Include="RLkernel.cs" />
     <Compile Include="WorkDispatch.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
