@@ -47,10 +47,9 @@ namespace deblur
             findDirection();
 
             done.Set();
-            
         }
 
-        private void findDirection()
+        public void findDirection()
         {
             const int STEPS = 31;
 
@@ -89,18 +88,18 @@ namespace deblur
             // debug
 //            Console.WriteLine(
 //           "\nDir seems to be {0}", dir);
-            Console.WriteLine("ANalyzing {0} {1} => {2}", startX, startY, dir);
-
-            /*
-            int[][] markData = new int[11][];
+#if DEBUG
+            Console.WriteLine("Analyzing {0} {1} => {2}", startX, startY, dir);
+            
+            int[][] markData = new int[31][];
             for (int i = 0; i < markData.Length; ++i)
             {
                 markData[i] = new int[2];
             }
 
-            bresenhamSample(maxPos * itrStep, 11, startX, startY, markData);
+            bresenhamSample(maxPos * itrStep, 31, startX, startY, markData);
             img.mark(markData);
-             */
+#endif
         }
 
         // find the best score candidate by looking at which direction has the largest differance to the direction facing 90 deg 

@@ -21,6 +21,8 @@ namespace deblur
         // make sure its odd
         public const int KERNEL_SIZE = 31;
 
+        public const bool MULTI_THREADED = true;
+
         static void Main(string[] args)
         {
             WorkDispatch workD = new WorkDispatch();
@@ -40,7 +42,9 @@ namespace deblur
                 // first pick a few point in the image on which to do analysis
                 float dir = analyze(img);
 
+#if DEBUG
                 Console.WriteLine("We have decided the direction is {0}", dir);
+#endif
 
                 // Now lets try to find out the blur kernel size
                 int kernelSize = findBlurSize();
@@ -48,10 +52,6 @@ namespace deblur
                 kernelSize = int.Parse(args[1]);
 
                 correct(img, kernelSize, dir);
-
-                // debug markup
-//                debugMarkVectors(img, dir);
-
             }
             catch (Exception e)
             {
@@ -63,7 +63,7 @@ namespace deblur
 
             // We are done, save the result
             img.reconstructBitmap();
-            img.getBitmap().Save("deriv" + filename + ".png", ImageFormat.Png);
+            img.getBitmap().Save(filename + ".png", ImageFormat.Png);
         }
 
         private static void debugMarkVectors(ImgContainer img, float dir)
@@ -117,12 +117,22 @@ namespace deblur
                                              (y + 1) * vert_dist,
                                              dones[n],
                                              KERNEL_SIZE);
-                    ThreadPool.QueueUserWorkItem(kernels[n].compute);
+                    if (MULTI_THREADED)
+                    {
+                        ThreadPool.QueueUserWorkItem(kernels[n].compute);
+                    }
+                    else
+                    {
+                        kernels[n].findDirection();
+                    }
                 }
             }
 
             // Wait until all Threads are done before moving on
-            WaitHandle.WaitAll(dones);
+            if (MULTI_THREADED)
+            {
+                WaitHandle.WaitAll(dones);
+            }
 
             // All right, so att this point we have a bunch of votes for the direction. We could possibly utilize this to find features in the iomage
             // for now we will just sort out the worst offenders and take the mean of the remaning ones.
@@ -137,10 +147,12 @@ namespace deblur
                 })
             );
 
+#if DEBUG
             foreach (Analyze a in kernels)
             {
                 Console.WriteLine("sorted {0}", a.getDir());                
             }
+#endif
 
             float sum = 0;
 
@@ -213,7 +225,6 @@ namespace deblur
             double[] dbuf = new double[img.width * img.height * 4];
             double[] ubufTmp;
 
-
             // assuming a straight line for the spread function
             // not really necessary as long as we assume all samples are equal
 //            float psf = 1 / kernelSize;
@@ -253,37 +264,14 @@ namespace deblur
                 }
             }
 
+            // iterate to a better image (hopefully)
             for (int rlLoop = 0; rlLoop < 10; ++rlLoop)
             {
-                for (int y = kernelSize/2; y < img.height-kernelSize/2-1; ++y)
-                {
-                    for (int x = kernelSize / 2; x < img.width - kernelSize / 2 - 1; ++x)
-                    {
-                        double uSumR = 0;
-                        double uSumG = 0;
-                        double uSumB = 0;
-                        for (int i = 0; i < kernelSize; ++i)
-                        {
-                            int thisX = x + pelCoords[i][0];
-                            int thisY = y + pelCoords[i][1];
-                            int thisAddr = 4 * (thisY * img.width + thisX);
-                            uSumR += ubuf[thisAddr + 2];
-                            uSumG += ubuf[thisAddr + 1];
-                            uSumB += ubuf[thisAddr + 0];
-                        }
 
-                        int dAddr = 4 * (y * img.width + x);
-
-                        double dR = dbuf[dAddr + 2];
-                        double dG = dbuf[dAddr + 1];
-                        double dB = dbuf[dAddr + 0];
-
-                        ubufNew[dAddr + 2] = ubuf[dAddr+2] * dR / uSumR;
-                        ubufNew[dAddr + 1] = ubuf[dAddr+1] * dG / uSumG;
-                        ubufNew[dAddr + 0] = ubuf[dAddr+0] * dB / uSumB;
-                    }
-                }
-
+                updateU(kernelSize / 2, img.width - kernelSize / 2 - 1,
+                        kernelSize / 2, img.height - kernelSize / 2 - 1,
+                        img, ubuf, ubufNew, dbuf, pelCoords, kernelSize);
+                
                 // swap the buffer pointers
                 ubufTmp = ubuf;
                 ubuf = ubufNew;
@@ -304,5 +292,42 @@ namespace deblur
 
         }
 
+        private static void updateU(int x0, int x1, int y0, int y1, ImgContainer img, double[] ubuf, double[] ubufNew, double[] dbuf, int[][] pelCoords, int kernelSize)
+        {
+            // Lazyly parallelizing y, seems like letting c# decide works best
+            const int ROWS_PER_THREAD = 1;
+            Parallel.For (0, (y1-y0 + ROWS_PER_THREAD-1)/ROWS_PER_THREAD, yhup => 
+            {
+                for (int y = y0 + yhup * ROWS_PER_THREAD; y < y0 + (yhup + 1) * ROWS_PER_THREAD && y < y1; ++y)
+                {
+                    
+                    for (int x = x0; x < x1; ++x)
+                    {
+                        double uSumR = 0;
+                        double uSumG = 0;
+                        double uSumB = 0;
+                        for (int i = 0; i < kernelSize; ++i)
+                        {
+                            int thisX = x + pelCoords[i][0];
+                            int thisY = y + pelCoords[i][1];
+                            int thisAddr = 4 * (thisY * img.width + thisX);
+                            uSumR += ubuf[thisAddr + 2];
+                            uSumG += ubuf[thisAddr + 1];
+                            uSumB += ubuf[thisAddr + 0];
+                        }
+
+                        int dAddr = 4 * (y * img.width + x);
+
+                        double dR = dbuf[dAddr + 2];
+                        double dG = dbuf[dAddr + 1];
+                        double dB = dbuf[dAddr + 0];
+
+                        ubufNew[dAddr + 2] = ubuf[dAddr + 2] * dR / uSumR;
+                        ubufNew[dAddr + 1] = ubuf[dAddr + 1] * dG / uSumG;
+                        ubufNew[dAddr + 0] = ubuf[dAddr + 0] * dB / uSumB;
+                    }
+                }
+            });
+        }
     }
 }
