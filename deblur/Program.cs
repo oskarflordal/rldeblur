@@ -36,7 +36,7 @@ namespace deblur
             try
             {
                 // Find the glocal color first
-                determineAverage();
+                Average average = determineAverage(img);
 
                 // Algo overview
                 // first pick a few point in the image on which to do analysis
@@ -50,6 +50,8 @@ namespace deblur
                 int kernelSize = findBlurSize();
                 // well actually lets cheat for now (REVISIT)
                 kernelSize = int.Parse(args[1]);
+
+                average.sync();
 
                 correct(img, kernelSize, dir);
             }
@@ -210,9 +212,12 @@ namespace deblur
         }
 
         // This may trash the cache while running together with the other threads
-        private static void determineAverage()
+        private static Average determineAverage(ImgContainer img)
         {
-//            throw new NotImplementedException();
+            ManualResetEvent done = new ManualResetEvent(false);
+            Average avg = new Average(done, img);
+
+            return avg;
         }
 
         private static void correct(ImgContainer img, int kernelSize, float dir)
@@ -226,46 +231,17 @@ namespace deblur
             double[] ubufTmp;
 
             // assuming a straight line for the spread function
-            // not really necessary as long as we assume all samples are equal
-//            float psf = 1 / kernelSize;
-
-            // psf line
             int[][] pelCoords = new int[kernelSize][];
             for (int i = 0; i < pelCoords.Length; ++i)
             {
                 pelCoords[i] = new int[2];
             }
-
             Analyze.bresenhamSample(dir, kernelSize, 0, 0, pelCoords);
 
-            // collect the observed value sum for each pixel
-            for (int y = 0; y < img.height; ++y) {
-                for (int x = 0; x < img.width;  ++x)
-                {
-                    int thisAddr = 4 * (y * img.width + x);
-                    dbuf[thisAddr+2] = 0;
-                    dbuf[thisAddr+1] = 0;
-                    dbuf[thisAddr+0] = 0;
-
-                    for (int i = 0; i < kernelSize; ++i)
-                    {
-                        int thisX = x + pelCoords[i][0];
-                        int thisY = y + pelCoords[i][1];
-                        dbuf[thisAddr + 2] += img.getR(thisX, thisY);
-                        dbuf[thisAddr + 1] += img.getG(thisX, thisY);
-                        dbuf[thisAddr + 0] += img.getB(thisX, thisY);
-                    }
-
-//                    Console.WriteLine("updown {0}", dbuf[thisAddr + 2]);                
-
-                    ubuf[thisAddr + 0] = 128.0;
-                    ubuf[thisAddr + 1] = 128.0;
-                    ubuf[thisAddr + 2] = 128.0;
-                }
-            }
+            initDbuf(img, dbuf, ubuf, pelCoords, kernelSize);
 
             // iterate to a better image (hopefully)
-            for (int rlLoop = 0; rlLoop < 10; ++rlLoop)
+            for (int rlLoop = 0; rlLoop < 5; ++rlLoop)
             {
 
                 updateU(kernelSize / 2, img.width - kernelSize / 2 - 1,
@@ -278,8 +254,13 @@ namespace deblur
                 ubufNew = ubufTmp;
             }
 
-
             // Set the final ubuf to the bitmap
+            writeUbufToImg(ubuf, img);
+        }
+
+        // data conversion from the accumulating doubles to bytes
+        private static void writeUbufToImg(double[] ubuf, ImgContainer img)
+        {
             for (int y = 0; y < img.height; ++y)
             {
                 for (int x = 0; x < img.width; ++x)
@@ -289,7 +270,35 @@ namespace deblur
                     img.setB(x, y, (int)ubuf[4 * (y * img.width + x) + 0]);
                 }
             }
+        }
 
+        private static void initDbuf(ImgContainer img, double[] dbuf, double[] ubuf, int[][] pelCoords, int kernelSize)
+        {
+            // collect the observed value sum for each pixel
+            // this will be the same for all iterations
+            for (int y = 0; y < img.height; ++y)
+            {
+                for (int x = 0; x < img.width; ++x)
+                {
+                    int thisAddr = 4 * (y * img.width + x);
+                    dbuf[thisAddr + 2] = 0;
+                    dbuf[thisAddr + 1] = 0;
+                    dbuf[thisAddr + 0] = 0;
+
+                    for (int i = 0; i < kernelSize; ++i)
+                    {
+                        int thisX = x + pelCoords[i][0];
+                        int thisY = y + pelCoords[i][1];
+                        dbuf[thisAddr + 2] += img.getR(thisX, thisY);
+                        dbuf[thisAddr + 1] += img.getG(thisX, thisY);
+                        dbuf[thisAddr + 0] += img.getB(thisX, thisY);
+                    }
+
+                    ubuf[thisAddr + 0] = 128.0;
+                    ubuf[thisAddr + 1] = 128.0;
+                    ubuf[thisAddr + 2] = 128.0;
+                }
+            }
         }
 
         private static void updateU(int x0, int x1, int y0, int y1, ImgContainer img, double[] ubuf, double[] ubufNew, double[] dbuf, int[][] pelCoords, int kernelSize)

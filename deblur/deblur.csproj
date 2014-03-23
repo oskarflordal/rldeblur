@@ -43,6 +43,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Analyze.cs" />
+    <Compile Include="Average.cs" />
     <Compile Include="ImgContainer.cs" />
     <Compile Include="WorkDispatch.cs" />
     <Compile Include="Program.cs" />

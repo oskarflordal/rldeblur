@@ -61,7 +61,6 @@ namespace deblur
                 pelData[i] = new int[2];
             }
 
-
             // Try a range of different directions
             // launching from top<->down to almost down->top in 180 deg arc (others are mirrors)
             // rad = 0 => top to bottom
